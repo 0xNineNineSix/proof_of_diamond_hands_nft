@@ -1,25 +1,33 @@
 from web3 import Web3
 import json
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
-
-w3 = Web3(Web3.HTTPProvider(os.environ.get('TESTNET_URL')))
+# Connect to local Hardhat fork
+w3 = Web3(Web3.HTTPProvider('http://127.0.0.1:8545'))
 assert w3.is_connected(), "Failed to connect to node"
 
-private_key = os.environ.get('PRIVATE_KEY')
+# Set up accounts
+private_key = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'  # Hardhat account 0
 admin = w3.eth.account.from_key(private_key)
 w3.eth.default_account = admin.address
 
-second_private_key = os.environ.get('SECOND_PRIVATE_KEY')
+# Second account for testing (Hardhat account 1)
+second_private_key = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'  # Hardhat account 1
 second_account = w3.eth.account.from_key(second_private_key)
 print(f"Second account for testing: {second_account.address}")
 
+# Fund second account
+w3.eth.send_transaction({
+    'from': admin.address,
+    'to': second_account.address,
+    'value': w3.to_wei(10, 'ether'),
+    'gas': 21000
+})
+
 # Load contract
-with open('eth_vault.json', 'r') as f:
+with open('scripts/eth_vault.json', 'r') as f:
     abi = json.load(f)
-with open('contract_address.txt', 'r') as f:
+with open('scripts/contract_address.txt', 'r') as f:
     contract_address = f.read().strip()
 contract = w3.eth.contract(address=contract_address, abi=abi)
 
@@ -100,6 +108,15 @@ for log in receipt['logs']:
         event_tip_amount = int.from_bytes(log['data'][160:192], 'big')
         print(f"Second Deposit: tokenId {token_id_2}, {eth_amount / 10**18} ETH for {wsteth_amount / 10**18} wstETH, price {deposit_price_2 / 10**8} USD, slippage {event_slippage} bps, tip {event_tip_bps} bps ({event_tip_amount / 10**18} ETH)")
         break
+
+# Test get_all_deposits
+try:
+    deposits = contract.functions.get_all_deposits().call()
+    print("All Deposits:")
+    for deposit in deposits:
+        print(f"  tokenId {deposit.token_id}, owner {deposit.owner}, {deposit.wsteth_amount / 10**18} wstETH, {deposit.price_usd / 10**8} USD")
+except Exception as e:
+    print(f"get_all_deposits failed: {str(e)}")
 
 # Test emergency withdrawal (non-admin)
 try:
